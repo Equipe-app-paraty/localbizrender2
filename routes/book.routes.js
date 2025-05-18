@@ -29,6 +29,54 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Outras rotas (GET por ID, PUT, DELETE)...
+// GET livro por ID
+router.get('/:id', async (req, res) => {
+  try {
+    const book = await Book.findById(req.params.id);
+    if (!book) {
+      return res.status(404).json({ message: 'Livro não encontrado' });
+    }
+    res.json(book);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT atualizar livro
+router.put('/:id', async (req, res) => {
+  try {
+    const book = await Book.findByIdAndUpdate(
+      req.params.id,
+      {
+        name: req.body.name,
+        author: req.body.author,
+        price: req.body.price,
+        description: req.body.description
+      },
+      { new: true }
+    );
+    
+    if (!book) {
+      return res.status(404).json({ message: 'Livro não encontrado' });
+    }
+    
+    res.json(book);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// DELETE remover livro
+router.delete('/:id', async (req, res) => {
+  try {
+    const book = await Book.findByIdAndDelete(req.params.id);
+    if (!book) {
+      return res.status(404).json({ message: 'Livro não encontrado' });
+    }
+    res.json({ message: 'Livro removido com sucesso' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 module.exports = router;
