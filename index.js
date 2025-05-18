@@ -155,3 +155,6 @@ const PORT = process.env.PORT;
 app.listen(PORT, () => {
   console.log("Server is running on port " + PORT);
 });
+
+const bookRoutes = require('./routes/book.routes');
+app.use('/books', bookRoutes);
