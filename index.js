@@ -1,160 +1,45 @@
-const express = require("express");
+const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 
-require("dotenv").config();
-
+// Middleware básicos
+app.use(cors());
 app.use(express.json());
 
-const connectDB = require("./connectMongo");
-
+// Conectar ao MongoDB
+const connectDB = require('./connectMongo');
 connectDB();
 
-const BookModel = require("./models/book.model");
-const redis = require('./redis')
+// Configuração do Redis
+const redis = require('./redis');
 
-const deleteKeys = async (pattern) => {
-  const keys = await redis.keys(`${pattern}::*`)
-  console.log(keys)
-  if (keys.length > 0) {
-    redis.del(keys)
-  }
-}
+// Middleware de autenticação do Clerk
+const { setupClerkMiddleware, protectRoute } = require('./middleware/auth.middleware');
+app.use(setupClerkMiddleware());
 
-app.get("/api/v1/books", async (req, res) => {
-  const { limit = 5, orderBy = "name", sortBy = "asc", keyword } = req.query;
-  let page = +req.query?.page;
+// Importar rotas
+const businessRoutes = require('./routes/business.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
+const webhookRoutes = require('./routes/webhook.routes');
 
-  if (!page || page <= 0) page = 1;
-
-  const skip = (page - 1) * + limit;
-
-  const query = {};
-
-  if (keyword) query.name = { $regex: keyword, $options: "i" };
-
-  const key = `Book::${JSON.stringify({query, page, limit, orderBy, sortBy})}`
-  let response = null
-  try {
-    const cache = await redis.get(key)
-    if (cache) {
-      response = JSON.parse(cache)
-    } else {
-      const data = await BookModel.find(query)
-      .skip(skip)
-      .limit(limit)
-      .sort({ [orderBy]: sortBy });
-      const totalItems = await BookModel.countDocuments(query);
-
-      response = {
-        msg: "Ok",
-        data,
-        totalItems,
-        totalPages: Math.ceil(totalItems / limit),
-        limit: +limit,
-        currentPage: page,
-      }
-
-      redis.setex(key, 600, JSON.stringify(response))
-    }
-    
-    return res.status(200).json(response);
-  } catch (error) {
-    return res.status(500).json({
-      msg: error.message,
-    });
-  }
+// Rota pública para verificar se o servidor está funcionando
+app.get('/', (req, res) => {
+  res.json({ message: 'API está funcionando!' });
 });
 
-app.get("/api/v1/books/:id", async (req, res) => {
-  try {
-    const data = await BookModel.findById(req.params.id);
+// Rotas da API
+app.use('/api/v1/businesses', protectRoute(), businessRoutes);
+app.use('/api/v1/analytics', protectRoute(), analyticsRoutes);
+app.use('/api/v1/webhooks', webhookRoutes);
 
-    if (data) {
-      return res.status(200).json({
-        msg: "Ok",
-        data,
-      });
-    }
+// Middleware de tratamento de erros
+const errorHandler = require('./utils/error-handler');
+app.use(errorHandler);
 
-    return res.status(404).json({
-      msg: "Not Found",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      msg: error.message,
-    });
-  }
-});
-
-app.post("/api/v1/books", async (req, res) => {
-  try {
-    const { name, author, price, description } = req.body;
-    const book = new BookModel({
-      name,
-      author,
-      price,
-      description,
-    });
-    const data = await book.save();
-    deleteKeys('Book')
-    return res.status(200).json({
-      msg: "Ok",
-      data,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      msg: error.message,
-    });
-  }
-});
-
-app.put("/api/v1/books/:id", async (req, res) => {
-  try {
-    const { name, author, price, description } = req.body;
-    const { id } = req.params;
-
-    const data = await BookModel.findByIdAndUpdate(
-      id,
-      {
-        name,
-        author,
-        price,
-        description,
-      },
-      { new: true }
-    );
-    deleteKeys('Book')
-    return res.status(200).json({
-      msg: "Ok",
-      data,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      msg: error.message,
-    });
-  }
-});
-
-app.delete("/api/v1/books/:id", async (req, res) => {
-  try {
-    await BookModel.findByIdAndDelete(req.params.id);
-    deleteKeys('Book')
-    return res.status(200).json({
-      msg: "Ok",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      msg: error.message,
-    });
-  }
-});
-
-const PORT = process.env.PORT;
-
+// Iniciar o servidor
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Server is running on port " + PORT);
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
-
-const bookRoutes = require('./routes/book.routes');
-app.use('/books', bookRoutes);
